@@ -34,13 +34,7 @@ from openai import AsyncOpenAI
 from app.core.config import settings
 from app.services.rag_service import get_rag_chain
 
-# 기존 market_data 모듈 재활용
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-try:
-    from rag_engine.market_data import collect_market_data as _collect
-except ImportError:
-    _collect = None  # v-invest 독립 실행 시 자체 수집 모듈로 교체 예정
+from app.services.market_data import collect_market_data as _collect
 
 # ── 전역 상태 ──
 _status_queue: asyncio.Queue = asyncio.Queue(maxsize=50)
