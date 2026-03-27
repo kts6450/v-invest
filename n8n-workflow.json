@@ -1,0 +1,233 @@
+{
+  "name": "V-Invest: n8n → FastAPI ML API 연동 (발표용)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 1 }]
+        }
+      },
+      "id": "n01",
+      "name": "스케줄 트리거 (1시간)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "path": "v-invest-trigger",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "n02",
+      "name": "웹훅 트리거 (수동)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 500]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/analysis/run-sync",
+        "options": {
+          "timeout": 180000,
+          "response": { "response": { "responseFormat": "json" } }
+        }
+      },
+      "id": "ml01",
+      "name": "【ML API①】AI 멀티에이전트 분석",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [280, 400],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
+      "notes": "FastAPI ML API 호출\n→ 투자분석가 AI + 리스크 AI + 편집장 AI\n→ RAG 과거 리포트 참조\n→ 리포트 품질 자동 평가"
+    },
+
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://127.0.0.1:8000/portfolio/recommend",
+        "options": { "timeout": 30000 }
+      },
+      "id": "ml02",
+      "name": "【ML API②】PPO 포트폴리오 최적화",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [560, 400],
+      "notes": "FastAPI ML API 호출\n→ PPO 강화학습 모델 추론\n→ 자산 배분 비중 반환\n→ 음성 요약 텍스트 포함"
+    },
+
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8000/rag/chat",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ question: '현재 시장 점수 ' + $('【ML API①】AI 멀티에이전트 분석').first().json.sentimentScore + '점 상황에서 가장 주목해야 할 리스크는?', tts_ready: true }) }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "ml03",
+      "name": "【ML API③】RAG 리스크 Q&A",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [560, 600],
+      "notes": "FastAPI ML API 호출\n→ ChromaDB 벡터 검색\n→ GPT-4o-mini RAG 답변\n→ TTS 최적화 텍스트"
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// n8n이 FastAPI ML API 3개의 결과를 수집·통합\nconst analysis  = $('【ML API①】AI 멀티에이전트 분석').first().json;\nconst portfolio = $('【ML API②】PPO 포트폴리오 최적화').first().json;\nconst ragQA     = $('【ML API③】RAG 리스크 Q&A').first().json;\n\n// 시장 알림 조건 판단\nconst score  = analysis.sentimentScore || 0;\nconst grade  = (analysis.quality || {}).grade || '-';\nconst fng    = (analysis.marketData?.crypto?.fngValue) || 50;\nconst vix    = parseFloat((analysis.marketData?.indices?.vix?.price) || 20);\nconst isAlert = Math.abs(score) >= 30 || vix >= 30 || fng <= 20 || fng >= 80;\n\n// 포트폴리오 상위 3개 자산\nconst weights = portfolio.weights || {};\nconst topAssets = Object.entries(weights)\n  .sort(([,a],[,b]) => b - a)\n  .slice(0, 3)\n  .map(([k, v]) => `${k} ${(v*100).toFixed(0)}%`)\n  .join(' | ');\n\n// 최종 리포트 (웹UI 표시용)\nconst report = {\n  date:           new Date().toLocaleString('ko-KR'),\n  sentimentScore: score,\n  sentimentLabel: analysis.sentimentLabel,\n  grade,\n  qualityScore:   (analysis.quality || {}).score,\n  summary:        analysis.summary || '',\n  mainAnalysis:   analysis.finalAnalysis || analysis.mainAnalysis || '',\n  riskAnalysis:   analysis.riskAnalysis || '',\n  ragAdvice:      ragQA.answer || '',\n  portfolio: {\n    weights:     weights,\n    topAssets,\n    voiceSummary: portfolio.voice_summary || '',\n  },\n  isAlert,\n  alertReason: isAlert ? [\n    Math.abs(score) >= 30 ? `심리점수 ${score}점` : '',\n    vix >= 30             ? `VIX ${vix}` : '',\n    fng <= 20             ? `극도 공포 FNG ${fng}` : '',\n    fng >= 80             ? `극도 탐욕 FNG ${fng}` : '',\n  ].filter(Boolean).join(', ') : ''\n};\n\nconsole.log(`✅ ML API 3개 결과 통합 완료 | 심리점수: ${score} | 등급: ${grade} | 알림: ${isAlert}`);\nreturn [{ json: report }];"
+      },
+      "id": "n10",
+      "name": "ML API 결과 통합",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 400]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "alert1",
+              "leftValue": "={{ $json.isAlert }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n11",
+      "name": "긴급 알림 필요?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1080, 400]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/reports/save",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "n12a",
+      "name": "웹UI 저장 (긴급)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 280],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/reports/save",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "n12b",
+      "name": "웹UI 저장 (일반)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 520],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// 긴급 알림 포맷팅 (웹UI SSE 알림)\nconst d = $json;\nconst emoji = d.sentimentScore >= 30 ? '🟢' : d.sentimentScore <= -30 ? '🔴' : '🟡';\n\nconsole.log(`🚨 긴급 알림 전송: ${d.alertReason}`);\nreturn [{ json: {\n  type: 'urgent_alert',\n  title: `${emoji} 긴급 시장 알림`,\n  message: `심리점수 ${d.sentimentScore}점 (${d.sentimentLabel}) | ${d.alertReason}`,\n  sentimentScore: d.sentimentScore,\n  portfolio: d.portfolio.topAssets,\n  timestamp: new Date().toISOString()\n}}];"
+      },
+      "id": "n13",
+      "name": "긴급 알림 포맷팅",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 160]
+    },
+
+    {
+      "parameters": {},
+      "id": "n14",
+      "name": "무동작 (일반 흐름)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1320, 640]
+    },
+
+    {
+      "parameters": {},
+      "id": "n99",
+      "name": "에러 트리거",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 700]
+    },
+    {
+      "parameters": {
+        "jsCode": "const err = $json;\nconsole.error('❌ V-Invest 파이프라인 오류:', JSON.stringify(err).substring(0, 200));\nreturn [{ json: { type: 'pipeline_error', error: String(err.error || err), timestamp: new Date().toISOString() } }];"
+      },
+      "id": "n98",
+      "name": "에러 로깅",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 700]
+    }
+  ],
+
+  "connections": {
+    "스케줄 트리거 (1시간)": {
+      "main": [[{ "node": "【ML API①】AI 멀티에이전트 분석", "type": "main", "index": 0 }]]
+    },
+    "웹훅 트리거 (수동)": {
+      "main": [[{ "node": "【ML API①】AI 멀티에이전트 분석", "type": "main", "index": 0 }]]
+    },
+    "【ML API①】AI 멀티에이전트 분석": {
+      "main": [[
+        { "node": "【ML API②】PPO 포트폴리오 최적화", "type": "main", "index": 0 },
+        { "node": "【ML API③】RAG 리스크 Q&A",       "type": "main", "index": 0 }
+      ]]
+    },
+    "【ML API②】PPO 포트폴리오 최적화": {
+      "main": [[{ "node": "ML API 결과 통합", "type": "main", "index": 0 }]]
+    },
+    "【ML API③】RAG 리스크 Q&A": {
+      "main": [[{ "node": "ML API 결과 통합", "type": "main", "index": 0 }]]
+    },
+    "ML API 결과 통합": {
+      "main": [[{ "node": "긴급 알림 필요?", "type": "main", "index": 0 }]]
+    },
+    "긴급 알림 필요?": {
+      "main": [
+        [
+          { "node": "긴급 알림 포맷팅", "type": "main", "index": 0 },
+          { "node": "웹UI 저장 (긴급)", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "무동작 (일반 흐름)", "type": "main", "index": 0 },
+          { "node": "웹UI 저장 (일반)", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "에러 트리거": {
+      "main": [[{ "node": "에러 로깅", "type": "main", "index": 0 }]]
+    }
+  },
+
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
