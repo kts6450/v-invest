@@ -27,6 +27,8 @@ class PortfolioResponse(BaseModel):
     confidence:     float             # 모델 신뢰도 (Sharpe ratio 기반)
 
 
+@router.post("/recommend", response_model=PortfolioResponse,
+             summary="PPO 기반 최적 포트폴리오 추천 (POST — n8n/외부 서비스 연동)")
 @router.get("/recommend", response_model=PortfolioResponse,
             summary="PPO 기반 최적 포트폴리오 추천")
 async def recommend_portfolio():
@@ -64,13 +66,14 @@ async def get_backtest_result(days: int = 30):
     ppo    = result.get("ppo", {})
     bh     = result.get("buy_and_hold", {})
 
+    ppo_sharpe = ppo.get("sharpe") or 0
+    bh_sharpe  = bh.get("sharpe") or 0
     voice_summary = (
-        f"최근 {days}일 백테스트 결과입니다. "
+        f"최근 {result.get('period_days', days)}일 백테스트 결과입니다. "
         f"PPO 모델 수익률 {ppo.get('return', 0):.1f}퍼센트, "
-        f"샤프 비율 {ppo.get('sharpe', 0):.2f}. "
-        f"단순 보유 전략 수익률 {bh.get('return', 0):.1f}퍼센트, "
-        f"샤프 비율 {bh.get('sharpe', 0):.2f}. "
-        f"{'PPO 모델이 더 우수합니다.' if ppo.get('sharpe', 0) > bh.get('sharpe', 0) else '단순 보유 전략이 더 우수합니다.'}"
+        f"샤프 비율 {ppo_sharpe:.2f}. "
+        f"단순 보유 전략 수익률 {bh.get('return', 0):.1f}퍼센트. "
+        f"{'PPO 모델이 더 우수합니다.' if ppo_sharpe > bh_sharpe else '시장 하락기 테스트 결과입니다.'}"
     )
     return {**result, "voice_summary": voice_summary}
 

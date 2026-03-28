@@ -30,6 +30,9 @@ frontend/.vite/
 # macOS
 .DS_Store
 
+# 테스트 스크립트 (로컬 디버깅용)
+backend/test_*.py
+
 # IDE
 .cursor/
 .vscode/

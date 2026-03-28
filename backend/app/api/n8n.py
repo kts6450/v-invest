@@ -14,6 +14,7 @@ n8n 멀티에이전트 연동 라우터
     Body: { content, sentimentScore, grade, ... }
 """
 import asyncio
+import json
 from fastapi import APIRouter, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -24,8 +25,22 @@ from app.services.rag_service import get_rag_chain
 
 router = APIRouter()
 
-# ── SSE(Server-Sent Events)로 실시간 리포트 푸시 ──
-_report_queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+# ── 브로드캐스트: 연결된 모든 클라이언트에게 동시 전송 ──
+# 클라이언트마다 개별 큐를 가짐 → 전원에게 메시지 전달
+_subscribers: list[asyncio.Queue] = []
+
+
+async def _broadcast(data: dict):
+    """연결된 모든 SSE 클라이언트에게 메시지 브로드캐스트"""
+    dead = []
+    for q in _subscribers:
+        try:
+            q.put_nowait(data)
+        except asyncio.QueueFull:
+            dead.append(q)
+    for q in dead:
+        _subscribers.remove(q)
+    print(f"SSE 브로드캐스트: {len(_subscribers)}개 클라이언트에 전송")
 
 
 class N8nReportRequest(BaseModel):
@@ -69,10 +84,10 @@ async def receive_report(
         "sentimentScore": req.sentimentScore,
         "sentimentLabel": req.sentimentLabel,
         "grade":          req.grade,
-        "preview":        req.content[:200],
+        "content":        req.content,          # 전체 내용
+        "preview":        req.content[:200],    # 미리보기 (하위 호환)
     }
-    if not _report_queue.full():
-        await _report_queue.put(report_data)
+    await _broadcast(report_data)
 
     # 3. TTS 요약 생성
     voice_summary = (
@@ -103,12 +118,23 @@ async def stream_reports():
       };
     """
     async def event_generator() -> AsyncGenerator[str, None]:
-        while True:
-            try:
-                data = await asyncio.wait_for(_report_queue.get(), timeout=30)
-                yield f"data: {data}\n\n"
-            except asyncio.TimeoutError:
-                yield ": keepalive\n\n"   # 연결 유지용 ping
+        # 이 클라이언트 전용 큐 생성 및 등록
+        q: asyncio.Queue = asyncio.Queue(maxsize=20)
+        _subscribers.append(q)
+        print(f"SSE 클라이언트 연결 (총 {len(_subscribers)}개)")
+        try:
+            while True:
+                try:
+                    data = await asyncio.wait_for(q.get(), timeout=30)
+                    print(f"SSE 전송: {str(data)[:80]}")
+                    yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            # 연결 종료 시 구독 해제
+            if q in _subscribers:
+                _subscribers.remove(q)
+            print(f"SSE 클라이언트 해제 (남은 {len(_subscribers)}개)")
 
     return StreamingResponse(
         event_generator(),

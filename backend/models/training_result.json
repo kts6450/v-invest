@@ -1,0 +1,28 @@
+{
+  "trained_at": "2026-03-28T02:22:58.572595",
+  "train_days": 401,
+  "test_days": 101,
+  "assets": [
+    "BTC",
+    "ETH",
+    "SOL",
+    "AAPL",
+    "NVDA",
+    "TSLA"
+  ],
+  "backtest": {
+    "ppo_return": -9.03,
+    "bnh_return": -21.45,
+    "sharpe": -0.92,
+    "max_dd": -12.79,
+    "win_rate": 0.43
+  },
+  "avg_weights": {
+    "BTC": 0.1253,
+    "ETH": 0.1517,
+    "SOL": 0.0788,
+    "AAPL": 0.1047,
+    "NVDA": 0.1782,
+    "TSLA": 0.2617
+  }
+}

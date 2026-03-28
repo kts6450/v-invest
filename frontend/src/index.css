@@ -3,4 +3,121 @@
 @tailwind utilities;
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0a0a0f; color: #fff; }
+
+:root {
+  --bg-primary:    #080B14;
+  --bg-secondary:  #0D1220;
+  --bg-card:       #111827;
+  --bg-card-hover: #1a2235;
+  --border:        rgba(255,255,255,0.06);
+  --border-accent: rgba(99,102,241,0.4);
+  --accent:        #6366f1;
+  --accent-glow:   rgba(99,102,241,0.3);
+  --accent2:       #8b5cf6;
+  --green:         #10b981;
+  --red:           #ef4444;
+  --text-primary:  #f1f5f9;
+  --text-secondary:#94a3b8;
+  --text-muted:    #475569;
+  --gold:          #f59e0b;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* 스크롤바 */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* 포커스 */
+:focus-visible { outline: 2px solid var(--accent) !important; outline-offset: 2px; }
+
+/* 접근성 */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0,0,0,0); border: 0;
+}
+
+/* 글래스모피즘 카드 */
+.glass {
+  background: rgba(17, 24, 39, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+}
+
+/* 그라디언트 텍스트 */
+.gradient-text {
+  background: linear-gradient(135deg, #6366f1, #a78bfa, #06b6d4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 카드 hover 효과 */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(99,102,241,0.15);
+}
+.card-hover:active {
+  transform: scale(0.98);
+}
+
+/* 애니메이션 */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(0.8); opacity: 0.5; }
+  50%       { transform: scale(1.2); opacity: 1; }
+}
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 8px var(--accent-glow); }
+  50%       { box-shadow: 0 0 24px var(--accent-glow), 0 0 48px var(--accent-glow); }
+}
+
+.animate-fade-in   { animation: fadeIn 0.4s ease forwards; }
+.animate-pulse-dot { animation: pulse-dot 1.2s ease infinite; }
+.animate-spin-slow { animation: spin-slow 2s linear infinite; }
+.animate-glow      { animation: glow 2s ease infinite; }
+
+/* 스켈레톤 로딩 */
+.skeleton {
+  background: linear-gradient(90deg, #1a2235 25%, #243048 50%, #1a2235 75%);
+  background-size: 200% auto;
+  animation: shimmer 1.5s linear infinite;
+  border-radius: 8px;
+}
+
+/* 모션 감소 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* 탭바 블러 */
+.tabbar-blur {
+  background: rgba(8, 11, 20, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border);
+}

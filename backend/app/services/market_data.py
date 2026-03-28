@@ -375,42 +375,50 @@ def fetch_reddit() -> dict:
 
 
 # ─────────────────────────────────────────
-# 7. 환율 + 원자재 + 지수 (Finnhub ETF 실시간)
+# 7. 환율 + 원자재 + 지수 (Yahoo Finance 무료 API)
 #
-#  ETF 대체 매핑:
-#   GLD  → 금 (1/10 oz 기준, 실제 금 가격 ≈ GLD × 10)
-#   SLV  → 은 (1 oz 기준, 실제 은 가격 ≈ SLV)
-#   USO  → WTI 유가 ETF
-#   SPY  → S&P 500 (실제 S&P500 ≈ SPY × 10)
-#   QQQ  → NASDAQ-100
-#   UVXY → VIX 변동성 ETF (VIX 대체)
+#  Yahoo Finance 심볼:
+#   ^GSPC  → S&P 500 지수
+#   ^IXIC  → NASDAQ Composite
+#   ^VIX   → VIX 변동성 지수
+#   GC=F   → 금 선물 (oz당 USD)
+#   SI=F   → 은 선물
+#   CL=F   → WTI 원유 선물
 # ─────────────────────────────────────────
 
-# Finnhub ETF 대체 티커
-_ETF_MAP = {
-    "gold":   ("GLD",  10.0),   # GLD 가격 × 10 ≈ 금 oz당 USD
-    "silver": ("SLV",   1.0),   # SLV 가격 ≈ 은 oz당 USD
-    "oil":    ("USO",   1.0),   # USO ETF 유가 추적
-    "sp500":  ("SPY",  10.0),   # SPY × 10 ≈ S&P500 지수
-    "nasdaq": ("QQQ",   1.0),   # QQQ = NASDAQ-100
-    "vix":    ("UVXY",  1.0),   # UVXY = 변동성 ETF
+_YAHOO_INDEX_MAP = {
+    "sp500":  "^GSPC",
+    "nasdaq": "^IXIC",
+    "dow":    "^DJI",
+    "vix":    "^VIX",
+    "gold":   "GC=F",
+    "silver": "SI=F",
+    "oil":    "CL=F",
 }
 
 
-def _finnhub_etf(ticker: str, multiplier: float = 1.0) -> dict:
-    """Finnhub ETF 실시간 시세 조회"""
-    data = _finnhub("quote", {"symbol": ticker})
-    if "error" in data or not data.get("c"):
-        return {"price": None, "change": None, "ticker": ticker}
-    price    = round(data["c"] * multiplier, 2)
-    prev     = data.get("pc", data["c"])
-    pct      = round((data["c"] - prev) / prev * 100, 2) if prev else 0
-    return {
-        "price":  price,
-        "change": pct,
-        "ticker": ticker,
-        "raw":    round(data["c"], 2),  # ETF 실제 가격 (참고용)
-    }
+def _yahoo_quote(symbol: str) -> dict:
+    """Yahoo Finance v8 API로 지수/원자재 실시간 시세"""
+    try:
+        r = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+            params={"interval": "1d", "range": "5d"},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        meta   = r.json()["chart"]["result"][0]["meta"]
+        price  = meta.get("regularMarketPrice") or meta.get("chartPreviousClose")
+        prev   = meta.get("previousClose") or meta.get("chartPreviousClose") or price
+        change = round((price - prev) / prev * 100, 2) if prev and prev != 0 else 0
+        return {
+            "price":  round(price, 2) if price else None,
+            "change": change,
+            "symbol": symbol,
+            "source": "Yahoo Finance",
+        }
+    except Exception:
+        return {"price": None, "change": None, "symbol": symbol, "source": "Yahoo Finance"}
 
 
 def fetch_forex_and_commodities() -> dict:
@@ -419,9 +427,8 @@ def fetch_forex_and_commodities() -> dict:
     krw = ex.get("rates", {}).get("KRW")
 
     result = {"usdKrw": krw}
-    for key, (ticker, mult) in _ETF_MAP.items():
-        result[key] = _finnhub_etf(ticker, mult)
-        time.sleep(0.2)  # Finnhub rate limit 보호
+    for key, symbol in _YAHOO_INDEX_MAP.items():
+        result[key] = _yahoo_quote(symbol)
 
     return result
 

@@ -25,7 +25,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.api import charts, voice, portfolio, rag, n8n, analysis
+from app.api import charts, voice, portfolio, rag, n8n, analysis, market
 from app.core.config import settings
 from app.services.rag_service import init_rag
 from app.services.analysis_pipeline import run_pipeline
@@ -87,8 +87,9 @@ app.include_router(voice.router,     prefix="/voice",     tags=["🎤 Voice STT/
 app.include_router(charts.router,    prefix="/charts",    tags=["📊 Vision 차트 분석"])
 app.include_router(rag.router,       prefix="/rag",       tags=["📚 RAG 투자 Q&A"])
 app.include_router(portfolio.router, prefix="/portfolio", tags=["💼 PPO 포트폴리오"])
-app.include_router(analysis.router,  prefix="/analysis",  tags=["🤖 AI 분석 파이프라인"])
-app.include_router(n8n.router,       prefix="/n8n",       tags=["🔌 n8n 연동 (선택)"])
+app.include_router(analysis.router,  prefix="/analysis",    tags=["🤖 AI 분석 파이프라인"])
+app.include_router(n8n.router,       prefix="/n8n",         tags=["🔌 n8n 연동 (선택)"])
+app.include_router(market.router,    prefix="/market-data",  tags=["📈 시장 데이터"])
 
 
 @app.post("/reports/save", tags=["📄 리포트 저장 (n8n 호환)"],
