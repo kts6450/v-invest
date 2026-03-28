@@ -5,12 +5,7 @@
     {
       "parameters": {
         "rule": {
-          "interval": [
-            {
-              "field": "hours",
-              "hoursInterval": 1
-            }
-          ]
+          "interval": [{ "field": "hours", "hoursInterval": 1 }]
         }
       },
       "id": "schedule-trigger",
@@ -33,13 +28,12 @@
       "position": [0, 500],
       "webhookId": "vinvest-manual"
     },
+
     {
       "parameters": {
         "url": "http://127.0.0.1:8000/market-data",
         "method": "POST",
-        "options": {
-          "timeout": 15000
-        }
+        "options": { "timeout": 15000 }
       },
       "id": "get-market-data",
       "name": "1단계: 실시간 시장 데이터 수집",
@@ -47,20 +41,44 @@
       "typeVersion": 4.2,
       "position": [240, 300]
     },
+
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ { \"btc_price\": $json.crypto.coins.btc.usd, \"eth_price\": $json.crypto.coins.eth.usd, \"aapl_price\": $json.stocks.aapl.price, \"nvda_price\": $json.stocks.nvda.price, \"fear_greed\": $json.crypto.fearGreed.value ?? 50, \"market_raw\": $json } }}"
+      },
+      "id": "edit-market",
+      "name": "시장 데이터 필드 추출",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+
     {
       "parameters": {
         "url": "http://127.0.0.1:8000/portfolio/recommend",
         "method": "POST",
-        "options": {
-          "timeout": 30000
-        }
+        "options": { "timeout": 30000 }
       },
       "id": "ppo-recommend",
       "name": "2단계: PPO 강화학습 포트폴리오 추천",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [480, 300]
+      "position": [680, 300]
     },
+
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ { \"ppo_weights\": $json.weights, \"ppo_voice_summary\": $json.voice_summary, \"ppo_confidence\": $json.confidence } }}"
+      },
+      "id": "edit-ppo",
+      "name": "PPO 추천 결과 필드 추출",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 300]
+    },
+
     {
       "parameters": {
         "url": "http://127.0.0.1:8000/rag/chat",
@@ -68,26 +86,38 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "{\"question\": \"오늘 시장 상황과 투자 전략을 분석하고 한국어로 요약해줘\"}",
-        "options": {
-          "timeout": 30000
-        }
+        "options": { "timeout": 30000 }
       },
       "id": "rag-chat",
       "name": "3단계: RAG AI 시장 분석",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [720, 300]
+      "position": [1120, 300]
     },
+
     {
       "parameters": {
-        "jsCode": "const ppo = $('2단계: PPO 강화학습 포트폴리오 추천').item.json;\nconst rag = $('3단계: RAG AI 시장 분석').item.json;\nconst market = $('1단계: 실시간 시장 데이터 수집').item.json;\n\nconst now = new Date();\nconst fng = market?.crypto?.fearGreed?.value ?? 50;\nconst fngNum = parseInt(fng) || 50;\nconst fngLabel = fngNum < 25 ? 'Extreme Fear' : fngNum < 45 ? 'Fear' : fngNum < 55 ? 'Neutral' : fngNum < 75 ? 'Greed' : 'Extreme Greed';\nconst fngKo = fngNum < 25 ? '극도의 공포' : fngNum < 45 ? '공포' : fngNum < 55 ? '중립' : fngNum < 75 ? '탐욕' : '극도의 탐욕';\n\nconst weights = ppo?.weights ?? {};\nconst topAssets = Object.entries(weights)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 3)\n  .map(([k, v]) => k + ' ' + (v * 100).toFixed(1) + '%')\n  .join(', ');\n\nconst weightLines = Object.entries(weights)\n  .map(([k, v]) => '  - ' + k + ': ' + (v * 100).toFixed(1) + '%')\n  .join('\\n');\n\nconst grade = fngNum >= 60 ? 'A' : fngNum >= 40 ? 'B' : 'C';\nconst aiAnswer = rag?.answer ?? '분석 결과 없음';\n\nconst stocks = market?.stocks ?? {};\nconst crypto = market?.crypto?.coins ?? {};\nconst stockLines = Object.entries(stocks).slice(0, 4)\n  .map(([k, v]) => '  ' + k.toUpperCase() + ': $' + (v.price ?? '-') + ' (' + (v.change ?? 0).toFixed(2) + '%)')\n  .join('\\n');\nconst cryptoLines = Object.entries(crypto).slice(0, 3)\n  .map(([k, v]) => '  ' + k.toUpperCase() + ': $' + (v.usd ?? '-'))\n  .join('\\n');\n\nconst content = '[V-Invest AI 리포트 - ' + now.toLocaleString('ko-KR') + ']\\n\\n■ 시장 심리 지수\\n공포탐욕: ' + fngNum + '/100 (' + fngKo + ')\\n\\n■ 주요 주식 시세 (Finnhub)\\n' + stockLines + '\\n\\n■ 암호화폐 시세 (Binance)\\n' + cryptoLines + '\\n\\n■ PPO 강화학습 추천 포트폴리오\\n' + weightLines + '\\n  Top 3: ' + topAssets + '\\n\\n■ RAG AI 분석 (뉴스·거시경제 기반)\\n' + aiAnswer;\n\nreturn [{\n  json: {\n    content,\n    sentimentScore: fngNum,\n    sentimentLabel: fngLabel,\n    grade,\n    score: fngNum,\n    top_assets: topAssets,\n    ai_answer: aiAnswer,\n    ppo_weights: weights\n  }\n}];"
+        "mode": "raw",
+        "jsonOutput": "={{ { \"rag_answer\": $json.answer, \"rag_sources\": $json.retrieved_chunks } }}"
+      },
+      "id": "edit-rag",
+      "name": "RAG 분석 결과 필드 추출",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 300]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "const ppoWeights  = $('PPO 추천 결과 필드 추출').item.json.ppo_weights ?? {};\nconst ragAnswer   = $('RAG 분석 결과 필드 추출').item.json.rag_answer ?? '분석 결과 없음';\nconst marketRaw   = $('시장 데이터 필드 추출').item.json.market_raw ?? {};\nconst fng         = parseInt($('시장 데이터 필드 추출').item.json.fear_greed) || 50;\n\nconst now    = new Date();\nconst fngKo  = fng < 25 ? '극도의 공포' : fng < 45 ? '공포' : fng < 55 ? '중립' : fng < 75 ? '탐욕' : '극도의 탐욕';\nconst fngLabel = fng < 25 ? 'Extreme Fear' : fng < 45 ? 'Fear' : fng < 55 ? 'Neutral' : fng < 75 ? 'Greed' : 'Extreme Greed';\nconst grade  = fng >= 60 ? 'A' : fng >= 40 ? 'B' : 'C';\n\nconst topAssets = Object.entries(ppoWeights)\n  .sort((a, b) => b[1] - a[1]).slice(0, 3)\n  .map(([k, v]) => k + ' ' + (v * 100).toFixed(1) + '%').join(', ');\n\nconst weightLines = Object.entries(ppoWeights)\n  .map(([k, v]) => '  - ' + k + ': ' + (v * 100).toFixed(1) + '%').join('\\n');\n\nconst stocks = marketRaw?.stocks ?? {};\nconst crypto = marketRaw?.crypto?.coins ?? {};\nconst stockLines = Object.entries(stocks).slice(0, 4)\n  .map(([k, v]) => '  ' + k.toUpperCase() + ': $' + (v.price ?? '-') + ' (' + (v.change ?? 0).toFixed(2) + '%)').join('\\n');\nconst cryptoLines = Object.entries(crypto).slice(0, 3)\n  .map(([k, v]) => '  ' + k.toUpperCase() + ': $' + (v.usd ?? '-')).join('\\n');\n\nconst content = '[V-Invest AI 리포트 - ' + now.toLocaleString('ko-KR') + ']\\n\\n■ 시장 심리 지수\\n공포탐욕: ' + fng + '/100 (' + fngKo + ')\\n\\n■ 주요 주식 시세 (Finnhub)\\n' + stockLines + '\\n\\n■ 암호화폐 시세 (Binance)\\n' + cryptoLines + '\\n\\n■ PPO 강화학습 추천 포트폴리오\\n' + weightLines + '\\n  Top 3: ' + topAssets + '\\n\\n■ RAG AI 분석 (뉴스·거시경제 기반)\\n' + ragAnswer;\n\nreturn [{ json: { content, sentimentScore: fng, sentimentLabel: fngLabel, grade, score: fng, top_assets: topAssets } }];"
       },
       "id": "build-report",
       "name": "4단계: AI 리포트 통합 생성",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [960, 300]
+      "position": [1560, 300]
     },
+
     {
       "parameters": {
         "url": "http://127.0.0.1:8000/n8n/report",
@@ -95,54 +125,47 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ content: $json.content, sentimentScore: $json.sentimentScore, sentimentLabel: $json.sentimentLabel, grade: $json.grade, score: $json.score }) }}",
-        "options": {
-          "timeout": 15000
-        }
+        "options": { "timeout": 15000 }
       },
       "id": "push-to-backend",
       "name": "5단계: 프론트엔드로 리포트 전송 (SSE)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1200, 300]
+      "position": [1780, 300]
     }
   ],
+
   "connections": {
     "1시간 자동 실행 트리거": {
-      "main": [
-        [{ "node": "1단계: 실시간 시장 데이터 수집", "type": "main", "index": 0 }]
-      ]
+      "main": [[{ "node": "1단계: 실시간 시장 데이터 수집", "type": "main", "index": 0 }]]
     },
     "수동 웹훅 트리거": {
-      "main": [
-        [{ "node": "1단계: 실시간 시장 데이터 수집", "type": "main", "index": 0 }]
-      ]
+      "main": [[{ "node": "1단계: 실시간 시장 데이터 수집", "type": "main", "index": 0 }]]
     },
     "1단계: 실시간 시장 데이터 수집": {
-      "main": [
-        [{ "node": "2단계: PPO 강화학습 포트폴리오 추천", "type": "main", "index": 0 }]
-      ]
+      "main": [[{ "node": "시장 데이터 필드 추출", "type": "main", "index": 0 }]]
+    },
+    "시장 데이터 필드 추출": {
+      "main": [[{ "node": "2단계: PPO 강화학습 포트폴리오 추천", "type": "main", "index": 0 }]]
     },
     "2단계: PPO 강화학습 포트폴리오 추천": {
-      "main": [
-        [{ "node": "3단계: RAG AI 시장 분석", "type": "main", "index": 0 }]
-      ]
+      "main": [[{ "node": "PPO 추천 결과 필드 추출", "type": "main", "index": 0 }]]
+    },
+    "PPO 추천 결과 필드 추출": {
+      "main": [[{ "node": "3단계: RAG AI 시장 분석", "type": "main", "index": 0 }]]
     },
     "3단계: RAG AI 시장 분석": {
-      "main": [
-        [{ "node": "4단계: AI 리포트 통합 생성", "type": "main", "index": 0 }]
-      ]
+      "main": [[{ "node": "RAG 분석 결과 필드 추출", "type": "main", "index": 0 }]]
+    },
+    "RAG 분석 결과 필드 추출": {
+      "main": [[{ "node": "4단계: AI 리포트 통합 생성", "type": "main", "index": 0 }]]
     },
     "4단계: AI 리포트 통합 생성": {
-      "main": [
-        [{ "node": "5단계: 프론트엔드로 리포트 전송 (SSE)", "type": "main", "index": 0 }]
-      ]
+      "main": [[{ "node": "5단계: 프론트엔드로 리포트 전송 (SSE)", "type": "main", "index": 0 }]]
     }
   },
-  "settings": {
-    "executionOrder": "v1"
-  },
+
+  "settings": { "executionOrder": "v1" },
   "staticData": null,
-  "meta": {
-    "instanceId": "vinvest-local"
-  }
+  "meta": { "instanceId": "vinvest-local" }
 }
